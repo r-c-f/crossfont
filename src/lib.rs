@@ -244,7 +244,7 @@ impl Display for Error {
 
 pub trait Rasterize {
     /// Create a new Rasterizer.
-    fn new(device_pixel_ratio: f32, use_thin_strokes: bool) -> Result<Self, Error>
+    fn new(device_pixel_ratio: f32, use_thin_strokes: bool, force_aliasing: bool) -> Result<Self, Error>
     where
         Self: Sized;
 

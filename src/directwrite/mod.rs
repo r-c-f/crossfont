@@ -170,20 +170,24 @@ impl DirectWriteRasterizer {
 }
 
 impl crate::Rasterize for DirectWriteRasterizer {
-    fn new(device_pixel_ratio: f32, _: bool) -> Result<DirectWriteRasterizer, Error> {
-        let mut use_smoothing: BOOL = 0;
-        unsafe {
-            SystemParametersInfoA(
-                SPI_GETFONTSMOOTHING,
-                0,
-                &mut use_smoothing as *mut _ as *mut c_void,
-                0,
-            );
-        }
-
-        let texture_type = match use_smoothing {
-            0 => TextureType::Aliased1x1,
-            _ => TextureType::ClearType3x1,
+    fn new(device_pixel_ratio: f32, _: bool, force_aliasing: bool) -> Result<DirectWriteRasterizer, Error> {
+        let texture_type = match force_aliasing {
+            false => {
+                let mut use_smoothing: BOOL = 0;
+                unsafe {
+                    SystemParametersInfoA(
+                        SPI_GETFONTSMOOTHING,
+                        0,
+                        &mut use_smoothing as *mut _ as *mut c_void,
+                        0,
+                    );
+                }
+                match use_smoothing {
+                    0 => TextureType::Aliased1x1,
+                    _ => TextureType::ClearType3x1,
+                }
+            }
+            true => TextureType::Aliased1x1,
         };
 
         Ok(DirectWriteRasterizer {
