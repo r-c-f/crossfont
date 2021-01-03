@@ -100,7 +100,7 @@ fn to_fixedpoint_16_6(f: f64) -> c_long {
 }
 
 impl Rasterize for FreeTypeRasterizer {
-    fn new(device_pixel_ratio: f32, _: bool) -> Result<FreeTypeRasterizer, Error> {
+    fn new(device_pixel_ratio: f32, _: bool, _: bool) -> Result<FreeTypeRasterizer, Error> {
         let library = Library::init()?;
 
         #[cfg(ft_set_default_properties_available)]
