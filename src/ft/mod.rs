@@ -87,6 +87,7 @@ pub struct FreeTypeRasterizer {
     ft_faces: HashMap<FtFaceLocation, Rc<FtFace>>,
     fallback_lists: HashMap<FontKey, FallbackList>,
     device_pixel_ratio: f32,
+    force_aliasing: bool,
 }
 
 #[inline]
@@ -100,7 +101,7 @@ fn to_fixedpoint_16_6(f: f64) -> c_long {
 }
 
 impl Rasterize for FreeTypeRasterizer {
-    fn new(device_pixel_ratio: f32, _: bool, _: bool) -> Result<FreeTypeRasterizer, Error> {
+    fn new(device_pixel_ratio: f32, _: bool, force_aliasing: bool) -> Result<FreeTypeRasterizer, Error> {
         let library = Library::init()?;
 
         #[cfg(ft_set_default_properties_available)]
@@ -115,6 +116,7 @@ impl Rasterize for FreeTypeRasterizer {
             fallback_lists: HashMap::new(),
             library,
             device_pixel_ratio,
+            force_aliasing,
         })
     }
 
@@ -348,7 +350,7 @@ impl FreeTypeRasterizer {
             let rgba = pattern.rgba().next().unwrap_or(Rgba::Unknown);
 
             let face = FaceLoadingProperties {
-                load_flags: Self::ft_load_flags(pattern),
+                load_flags: self.ft_load_flags(pattern),
                 render_mode: Self::ft_render_mode(pattern),
                 lcd_filter: Self::ft_lcd_filter(pattern),
                 non_scalable,
@@ -499,14 +501,19 @@ impl FreeTypeRasterizer {
         }
     }
 
-    fn ft_load_flags(pattern: &PatternRef) -> LoadFlag {
-        let antialias = pattern.antialias().next().unwrap_or(true);
+    fn ft_load_flags(&self, pattern: &PatternRef) -> LoadFlag {
         let autohint = pattern.autohint().next().unwrap_or(false);
         let hinting = pattern.hinting().next().unwrap_or(true);
         let rgba = pattern.rgba().next().unwrap_or(Rgba::Unknown);
         let embedded_bitmaps = pattern.embeddedbitmap().next().unwrap_or(true);
         let scalable = pattern.scalable().next().unwrap_or(true);
         let color = pattern.color().next().unwrap_or(false);
+
+        // Disable antialiasing according to config
+        let antialias = match self.force_aliasing {
+            false => pattern.antialias().next().unwrap_or(true),
+            true => false,
+        };
 
         // Disable hinting if so was requested.
         let hintstyle = if hinting {
