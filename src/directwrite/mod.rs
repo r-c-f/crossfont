@@ -47,7 +47,7 @@ pub struct DirectWriteRasterizer {
     fonts: HashMap<FontKey, Font>,
     keys: HashMap<FontDesc, FontKey>,
     device_pixel_ratio: f32,
-    texture_type: TextureType,
+    force_aliasing: bool,
     available_fonts: FontCollection,
     fallback_sequence: Option<FontFallback>,
 }
@@ -73,7 +73,26 @@ impl DirectWriteRasterizer {
             bidiLevel: 0,
         };
 
-        let rendering_mode = match self.texture_type {
+        let texture_type = match self.force_aliasing {
+            false => {
+                let mut use_smoothing: BOOL = 0;
+                unsafe {
+                    SystemParametersInfoA(
+                        SPI_GETFONTSMOOTHING,
+                        0,
+                        &mut use_smoothing as *mut _ as *mut c_void,
+                        0,
+                    );
+                }
+                match use_smoothing {
+                    0 => TextureType::Aliased1x1,
+                    _ => TextureType::ClearType3x1,
+                }
+            },
+            true => TextureType::Aliased1x1,
+        };
+
+        let rendering_mode = match texture_type {
             TextureType::ClearType3x1 => face.get_recommended_rendering_mode_default_params(
                 em_size,
                 self.device_pixel_ratio,
@@ -93,14 +112,12 @@ impl DirectWriteRasterizer {
         )?;
 
         let bounds =
-            glyph_analysis.get_alpha_texture_bounds(self.texture_type as DWRITE_TEXTURE_TYPE)?;
+            glyph_analysis.get_alpha_texture_bounds(texture_type as DWRITE_TEXTURE_TYPE)?;
 
-        let buffer = BitmapBuffer::RGB(
-            self.normalize_buffer(
-                glyph_analysis
-                    .create_alpha_texture(self.texture_type as DWRITE_TEXTURE_TYPE, bounds)?,
-            ),
-        );
+        let buffer = BitmapBuffer::RGB(Self::normalize_buffer(
+            texture_type,
+            glyph_analysis.create_alpha_texture(texture_type as DWRITE_TEXTURE_TYPE, bounds)?,
+        ));
         Ok(RasterizedGlyph {
             character,
             width: (bounds.right - bounds.left) as i32,
@@ -153,8 +170,8 @@ impl DirectWriteRasterizer {
     /// Given a buffer containing a rasterized glyph, return a buffer with
     /// three bytes per pixel regardless of the DirectWrite texture type in
     /// use.
-    fn normalize_buffer(&self, buffer: Vec<u8>) -> Vec<u8> {
-        match self.texture_type {
+    fn normalize_buffer(texture_type: TextureType, buffer: Vec<u8>) -> Vec<u8> {
+        match texture_type {
             TextureType::ClearType3x1 => buffer,
             TextureType::Aliased1x1 => {
                 let mut norm_buf: Vec<u8> = Vec::with_capacity(buffer.len() * 3);
@@ -170,31 +187,16 @@ impl DirectWriteRasterizer {
 }
 
 impl crate::Rasterize for DirectWriteRasterizer {
-    fn new(device_pixel_ratio: f32, _: bool, force_aliasing: bool) -> Result<DirectWriteRasterizer, Error> {
-        let texture_type = match force_aliasing {
-            false => {
-                let mut use_smoothing: BOOL = 0;
-                unsafe {
-                    SystemParametersInfoA(
-                        SPI_GETFONTSMOOTHING,
-                        0,
-                        &mut use_smoothing as *mut _ as *mut c_void,
-                        0,
-                    );
-                }
-                match use_smoothing {
-                    0 => TextureType::Aliased1x1,
-                    _ => TextureType::ClearType3x1,
-                }
-            }
-            true => TextureType::Aliased1x1,
-        };
-
+    fn new(
+        device_pixel_ratio: f32,
+        _: bool,
+        force_aliasing: bool,
+    ) -> Result<DirectWriteRasterizer, Error> {
         Ok(DirectWriteRasterizer {
             fonts: HashMap::new(),
             keys: HashMap::new(),
             device_pixel_ratio,
-            texture_type,
+            force_aliasing,
             available_fonts: FontCollection::system(),
             fallback_sequence: FontFallback::get_system_fallback(),
         })
